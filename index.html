@@ -108,6 +108,23 @@ header button{padding:6px 10px;min-height:36px}
 .mk.active{background:var(--accent);width:38px;height:38px} .mk.active span{font-size:15px}
 .mk.next{background:var(--next);width:34px;height:34px}
 .mk.done{background:var(--done)}
+.mk.sel{width:44px;height:44px;box-shadow:0 0 0 4px #fff,0 0 0 8px rgba(26,115,232,.55),0 2px 8px rgba(0,0,0,.4);animation:selPulse 1.6s ease-in-out infinite}
+.mk.sel span{font-size:16px}
+@keyframes selPulse{50%{box-shadow:0 0 0 4px #fff,0 0 0 12px rgba(26,115,232,.25),0 2px 8px rgba(0,0,0,.4)}}
+/* 詳細を開いている間も地図が見えて操作できるように */
+#mDetail{pointer-events:none;background:transparent}
+#mDetail .sheet{pointer-events:auto;box-shadow:0 -4px 18px rgba(0,0,0,.22)}
+@media (max-width:820px),(orientation:portrait){#mDetail .sheet{max-height:54dvh}}
+@media (min-width:821px) and (orientation:landscape){#mDetail{justify-content:flex-end;align-items:stretch}#mDetail .sheet{width:420px;max-width:420px;max-height:none;height:100%;border-radius:0;padding-top:var(--st);box-shadow:-4px 0 18px rgba(0,0,0,.18)}}
+/* いま・次のコンパクト表示 */
+.cardTgl{position:absolute;top:8px;right:8px;min-height:28px;padding:2px 8px;font-size:12px;color:var(--sub)}
+.nowCard{position:relative}
+.cmp{display:flex;align-items:center;gap:8px;padding:8px 10px}
+.cmp .lbl{white-space:nowrap}
+.cmp .grow{flex:1;min-width:0}
+.cmp button,.cmp a.btn{min-height:34px;padding:4px 10px;font-size:13px;flex:none}
+.cmp .pill{flex:none}
+.nextCard.cmp{margin-top:6px;padding:6px 10px}
 .me{width:18px;height:18px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 0 2px rgba(26,115,232,.35),0 1px 4px rgba(0,0,0,.4)}
 
 /* modal */
@@ -251,7 +268,7 @@ function confirmBox(msg) {
   });
 }
 function openModal(id) { $('#' + id).classList.add('show'); }
-function closeModal(id) { $('#' + id).classList.remove('show'); }
+function closeModal(id) { $('#' + id).classList.remove('show'); if (id === 'mDetail' && detailId) { detailId = null; if (P) drawMap(computeState()); } }
 document.querySelectorAll('.modal').forEach(m => {
   m.addEventListener('click', e => { if (e.target === m && m.id !== 'mEdit') closeModal(m.id); });
   m.querySelectorAll('[data-close]').forEach(b => b.onclick = () => closeModal(m.id));
@@ -478,9 +495,10 @@ function drawMap(st) {
   P.stops.forEach((s, i) => {
     if (!hasGeo(s)) return;
     const cls = s === st.active ? 'active' : s === st.next ? 'next' : s.done ? 'done' : '';
-    const size = cls === 'active' ? 38 : cls === 'next' ? 34 : 28;
-    const icon = L.divIcon({ className: '', html: `<div class="mk ${cls}"><span>${i + 1}</span></div>`, iconSize: [size, size], iconAnchor: [size / 2, size] });
-    const m = L.marker([+s.lat, +s.lng], { icon, zIndexOffset: cls === 'active' ? 1000 : cls === 'next' ? 900 : s.done ? 0 : 500 });
+    const sel = s.id === detailId;
+    const size = sel ? 44 : cls === 'active' ? 38 : cls === 'next' ? 34 : 28;
+    const icon = L.divIcon({ className: '', html: `<div class="mk ${cls} ${sel ? 'sel' : ''}"><span>${i + 1}</span></div>`, iconSize: [size, size], iconAnchor: [size / 2, size] });
+    const m = L.marker([+s.lat, +s.lng], { icon, zIndexOffset: sel ? 2000 : cls === 'active' ? 1000 : cls === 'next' ? 900 : s.done ? 0 : 500 });
     m.bindTooltip(`${i + 1}. ${esc(s.time)} ${esc(s.title)}`, { direction: 'top', offset: [0, -size] });
     m.on('click', () => showDetail(s));
     m.addTo(layerStops);
@@ -576,10 +594,26 @@ function renderStatus(st = computeState()) {
   const a = st.active, n = st.next, tm = timing(st);
   const dA = myPos && hasGeo(a) ? `現在地から ${fmtDist(dist(myPos, { lat: +a.lat, lng: +a.lng }))}` : '';
   const dN = n && hasGeo(n) ? (hasGeo(a) ? `${fmtDist(dist({ lat: +a.lat, lng: +a.lng }, { lat: +n.lat, lng: +n.lng }))}` : '') : '';
-  el.innerHTML = warn + `
-    <div class="card nowCard">
+  const tgl = `<button class="cardTgl" id="sTgl">${cfg.compact ? '拡大' : '縮小'}</button>`;
+  if (cfg.compact) {
+    el.innerHTML = warn + `
+    <div class="card nowCard cmp">
+      <span class="lbl">いま#${st.ai + 1}</span>
+      <div class="grow"><div class="ellip"><b>${esc(a.title)}</b>${a.cuts ? ` <span class="subl">${esc(a.cuts)}</span>` : ''}</div>
+        <div class="ellip"><span class="pill ${tm.cls}">${esc(tm.text)}</span></div></div>
+      <button class="primary" id="sDone">完了→</button>
+      <button id="sDetail">詳細</button>
+      <button id="sTgl" style="color:var(--sub)">拡大</button>
+    </div>
+    ${n ? `<div class="card nextCard cmp">
+      <span class="lbl">次#${P.stops.indexOf(n) + 1}</span>
+      <div class="grow ellip"><b>${esc(n.time)}</b> ${esc(n.title)}${dN ? ` <span class="subl">${dN}</span>` : ''}</div>
+      <button id="sNextDetail">詳細</button>
+    </div>` : ''}`;
+  } else el.innerHTML = warn + `
+    <div class="card nowCard">${tgl}
       <div class="lbl">いま #${st.ai + 1}</div>
-      <div class="big ellip">${esc(a.title)}</div>
+      <div class="big ellip" style="padding-right:56px">${esc(a.title)}</div>
       <div class="subl ellip">${esc(a.time || '')}${a.time ? '　' : ''}${esc(a.place)}</div>
       ${a.cuts || a.costume || a.note ? `<div class="subl ellip" style="color:var(--ink)">${a.cuts ? `CUT <b>${esc(a.cuts)}</b>　` : ''}${esc(a.costume)}${a.note ? '　' + esc(a.note) : ''}</div>` : ''}
       <div style="margin-top:6px"><span class="pill ${tm.cls}">${esc(tm.text)}</span> <span class="subl">${dA}</span>${hasGeo(a) ? '' : ' <span class="nogeo">位置未設定</span>'}</div>
@@ -596,6 +630,7 @@ function renderStatus(st = computeState()) {
       ${hasGeo(n) ? `<a class="btn" href="${navURL(n)}" target="_blank" rel="noopener">ナビ</a>` : ''}
       <button id="sNextDetail">詳細</button>
     </div>` : ''}`;
+  $('#sTgl').onclick = () => { cfg.compact = !cfg.compact; saveCfg(); renderStatus(); setTimeout(() => map.invalidateSize(), 50); };
   $('#sDone').onclick = () => setDone(a, true).then(() => { const s2 = computeState(); if (s2.active && hasGeo(s2.active)) map.panTo([+s2.active.lat, +s2.active.lng]); });
   $('#sDetail').onclick = () => showDetail(a);
   const nd = $('#sNextDetail'); if (nd) nd.onclick = () => showDetail(n);
@@ -629,7 +664,7 @@ $('#list').addEventListener('click', async e => {
     if (j < 0 || j >= P.stops.length) return;
     [P.stops[i], P.stops[j]] = [P.stops[j], P.stops[i]]; render(); pushProject();
   } else if (act === 'edit') openEdit(s);
-  else { if (hasGeo(s)) map.panTo([+s.lat, +s.lng]); if (editMode) openEdit(s); else showDetail(s); }
+  else { if (editMode) { if (hasGeo(s)) map.panTo([+s.lat, +s.lng]); openEdit(s); } else showDetail(s); }
 });
 $('#btnEdit').onclick = () => { editMode = !editMode; $('#btnEdit').textContent = editMode ? '完了' : '編集'; $('#btnEdit').classList.toggle('primary', editMode); render(); };
 
@@ -639,7 +674,13 @@ tick(); setInterval(() => { tick(); if (P) renderStatus(); }, 15000);
 
 /* ========== detail ========== */
 let detailId = null;
-function showDetail(s) { detailId = s.id; renderDetail(); $('#dBody').scrollTop = 0; openModal('mDetail'); }
+function focusStop(s) {
+  drawMap(computeState());
+  if (!hasGeo(s)) { toast('この項目は位置が未設定です'); return; }
+  map.invalidateSize();
+  map.setView([+s.lat, +s.lng], Math.max(map.getZoom(), 16), { animate: true });
+}
+function showDetail(s) { detailId = s.id; renderDetail(); $('#dBody').scrollTop = 0; openModal('mDetail'); focusStop(s); }
 function renderDetail(dir) {
   const i = P.stops.findIndex(x => x.id === detailId);
   if (i < 0) { closeModal('mDetail'); return; }
@@ -695,7 +736,7 @@ function detailGo(d) {
   if (i < 0 || j < 0 || j >= P.stops.length) return;
   const ta = $('#dLog'); if (ta && ta.value.trim()) { toast('入力中のメモがあります。追加するか消してから移動してください'); return; }
   detailId = P.stops[j].id; renderDetail(d); $('#dBody').scrollTop = 0;
-  const s = P.stops[j]; if (hasGeo(s)) map.panTo([+s.lat, +s.lng]);
+  focusStop(P.stops[j]);
 }
 $('#dPrev').onclick = () => detailGo(-1);
 $('#dNext').onclick = () => detailGo(1);

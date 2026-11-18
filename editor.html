@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>香盤表エディタ｜ロケ進行マップ</title>
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.3/leaflet-maplibre-gl.js"></script>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--ink:#16181d;--sub:#5b6270;--line:#dfe2e8;--accent:#e5482d;--sel:#fff4d6;--todo:#2f6fed;--ok:#1f9d55;--warn:#d6336c;--next:#f29d0b}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif;font-size:13px;color:var(--ink);background:var(--bg)}
+body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:5px 10px;cursor:pointer;white-space:nowrap}
+button:hover{border-color:#b9bfca}
+button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+button.on{background:var(--todo);color:#fff;border-color:var(--todo)}
+button.danger{color:var(--warn)}
+a.btn{border:1px solid var(--line);background:#fff;border-radius:7px;padding:5px 10px;color:inherit;text-decoration:none;white-space:nowrap}
+label.btn{border:1px solid var(--line);background:#fff;border-radius:7px;padding:5px 10px;cursor:pointer;white-space:nowrap}
+header{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
+header .brand{font-weight:700;font-size:14px;margin-right:6px}
+#syncDot{width:10px;height:10px;border-radius:50%;background:#9aa1ad;flex:none}
+#syncDot.ok{background:var(--ok)}#syncDot.err{background:var(--warn)}#syncDot.busy{background:var(--next)}
+#syncText{color:var(--sub);font-size:12px;min-width:90px}
+.grow{flex:1}
+.meta{display:flex;gap:8px;padding:8px 12px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;align-items:center}
+.meta label{font-size:11px;color:var(--sub);display:flex;flex-direction:column;gap:2px}
+.meta input{border:1px solid var(--line);border-radius:6px;padding:5px 7px;font-size:13px}
+#main{flex:1;display:flex;min-height:0}
+#left{flex:1;display:flex;flex-direction:column;min-width:0}
+.toolbar{display:flex;gap:6px;padding:6px 10px;align-items:center;border-bottom:1px solid var(--line);background:#fafbfc;flex-wrap:wrap}
+.toolbar .sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+.toolbar .hint{color:var(--sub);font-size:11px}
+#gridWrap{flex:1;overflow:auto;background:#fff}
+table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}
+th{position:sticky;top:0;z-index:2;background:#eef0f4;font-weight:600;font-size:12px;text-align:left;padding:6px 6px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);white-space:nowrap}
+td{border-bottom:1px solid var(--line);border-right:1px solid #eceef2;padding:0;vertical-align:top;background:#fff}
+tr.blockStart td{border-top:2px solid #c9ced8}
+tr.sel td{background:var(--sel)}
+tr.done td{color:#9aa1ad}
+td.rn{width:36px;text-align:center;color:var(--sub);cursor:pointer;user-select:none;padding:6px 0;background:#fafbfc}
+tr.sel td.rn{background:#ffe6a6;color:var(--ink);font-weight:700}
+td input,td select,td textarea{width:100%;border:0;background:transparent;padding:6px 6px;outline:none;font-size:13px;resize:none;display:block}
+td input:focus,td select:focus,td textarea:focus{background:#fff;box-shadow:inset 0 0 0 2px var(--todo)}
+td textarea{min-height:30px;line-height:1.35;overflow:hidden}
+td.img{padding:4px;cursor:pointer}
+td.img .th{display:flex;gap:2px;align-items:center}
+td.img img{height:26px;width:40px;object-fit:cover;border-radius:3px;background:#eee}
+td.img span{color:var(--sub);font-size:11px;margin-left:3px}
+.geoOk{color:var(--ok)} .geoNo{color:#c0c4cc}
+td.geo input{font-variant-numeric:tabular-nums;font-size:12px}
+td.geo{position:relative}
+td.geo .dot{position:absolute;left:4px;top:9px;width:7px;height:7px;border-radius:50%}
+td.geo input{padding-left:15px}
+#right{width:440px;display:flex;flex-direction:column;border-left:1px solid var(--line);background:var(--bg);min-height:0}
+#mapBox{position:relative;flex:0 0 46%}
+#map{position:absolute;inset:0}
+.mapTools{position:absolute;top:8px;right:8px;z-index:500;display:flex;gap:4px}
+.mapTools button,.mapTools select{box-shadow:0 1px 3px rgba(0,0,0,.2);background:#fff;border:1px solid var(--line);border-radius:7px;padding:4px 8px}
+.mapTools button.on{background:var(--todo);color:#fff}
+#detail{flex:1;overflow:auto;padding:10px 12px}
+.sec{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px}
+.sec h4{margin:0 0 6px;font-size:13px}
+.sec label{display:block;font-size:11px;color:var(--sub);margin:6px 0 3px}
+.sec input,.sec textarea{width:100%;border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:13px}
+.sec textarea{min-height:70px;resize:vertical}
+.row{display:flex;gap:6px;align-items:center}
+.imgs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.imgs .it{position:relative;border-radius:6px;overflow:hidden;background:#eee}
+.imgs img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;cursor:zoom-in}
+.imgs .it .ops{position:absolute;top:3px;right:3px;display:flex;gap:2px}
+.imgs .it .ops button{padding:0 6px;font-size:11px;border-radius:5px;opacity:.9}
+.drop{border:2px dashed var(--line);border-radius:8px;padding:12px;text-align:center;color:var(--sub);margin-top:6px}
+.drop.over{border-color:var(--todo);background:#eef3ff;color:var(--todo)}
+.results button{display:block;width:100%;text-align:left;margin-top:3px;font-size:12px;white-space:normal}
+.empty{color:var(--sub);padding:20px;text-align:center}
+.mk{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--todo);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.mk span{transform:rotate(45deg);color:#fff;font-weight:700;font-size:11px}
+.mk.sel{background:var(--accent);width:34px;height:34px}.mk.sel span{font-size:13px}
+.mk.done{background:#9aa1ad}
+#viewer{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:3000;display:none;align-items:center;justify-content:center;cursor:zoom-out}
+#viewer.show{display:flex}
+#viewer img{max-width:94vw;max-height:94vh}
+.modal{position:fixed;inset:0;background:rgba(10,12,16,.45);z-index:2500;display:none;align-items:center;justify-content:center}
+.modal.show{display:flex}
+.modal .box{background:#fff;border-radius:12px;padding:16px;max-width:520px;width:92vw;max-height:86vh;overflow:auto}
+.modal .box h3{margin:0 0 8px;font-size:15px}
+.modal .box input{width:100%;border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.modal .btns{display:flex;gap:6px;justify-content:flex-end;margin-top:12px}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:8px 14px;border-radius:999px;z-index:4000;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+kbd{font-size:10px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px;background:#fff}
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">香盤表エディタ</span>
+  <select id="projSel" title="プロジェクト"></select>
+  <button id="bNew">新規</button>
+  <span class="grow"></span>
+  <span id="syncDot"></span><span id="syncText">未保存</span>
+  <label class="btn">読み込み<input type="file" id="fImport" accept=".json,.csv,application/json,text/csv" hidden></label>
+  <button id="bExpJson">JSON書き出し</button>
+  <button id="bExpCsv">CSV書き出し</button>
+  <button id="bSync">共有設定</button>
+  <a class="btn" href="index.html" target="_blank">現場ビュー ↗</a>
+</header>
+<div class="meta">
+  <label>案件名<input id="mTitle" style="width:280px"></label>
+  <label>撮影日<input id="mDate" type="date"></label>
+  <label>連絡先（tel）<input id="mTel" style="width:200px"></label>
+  <label>最寄駅・集合（place）<input id="mStation" style="width:260px"></label>
+  <label style="flex:1;min-width:200px">全体メモ<input id="mNotes"></label>
+  <div style="font-size:11px;color:var(--sub);display:flex;flex-direction:column;gap:2px">香盤表PDF（現場ビューのヘッダーから開く）<span style="display:flex;gap:6px;align-items:center"><span id="mPdfName" style="color:var(--ink);font-size:13px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span><label class="btn" id="mPdfBtn">登録<input type="file" id="mPdf" accept="application/pdf" hidden></label><button id="mPdfDel" hidden>外す</button></span></div>
+</div>
+<div id="main">
+  <div id="left">
+    <div class="toolbar">
+      <button id="tAdd" class="primary">＋ 行を追加</button>
+      <button id="tDup">複製</button>
+      <button id="tUp">↑</button><button id="tDown">↓</button>
+      <button id="tDel" class="danger">削除</button>
+      <span class="sep"></span>
+      <span class="hint"><kbd>Enter</kbd> 下へ ／ <kbd>Ctrl</kbd>+<kbd>Enter</kbd> 下に行追加 ／ <kbd>Alt</kbd>+<kbd>↑↓</kbd> 行移動 ／ 時刻空欄＝直前と同じ枠 ／ 画像は右パネルにドロップ・<kbd>Ctrl</kbd>+<kbd>V</kbd></span>
+    </div>
+    <div id="gridWrap"><table><thead><tr id="thead"></tr></thead><tbody id="tbody"></tbody></table></div>
+  </div>
+  <div id="right">
+    <div id="mapBox"><div id="map"></div>
+      <div class="mapTools">
+        <button id="mPlace" class="on" title="選択中の行がある時、地図クリックでその行の位置を設定">クリックで配置</button>
+        <button id="mFit">全体</button>
+        <select id="mTiles"><option value="liberty">ベクター 標準</option><option value="positron">ベクター 淡色</option><option value="bright">ベクター ブライト</option><option value="gsi">地理院 標準</option><option value="pale">地理院 淡色</option><option value="photo">地理院 写真</option><option value="osm">OSM</option></select>
+      </div>
+    </div>
+    <div id="detail"></div>
+  </div>
+</div>
+
+<div class="modal" id="mSync"><div class="box">
+  <h3>共有設定（Google Apps Script）</h3>
+  <p style="color:var(--sub);margin:0 0 8px">現場ビューの「設定 → 共有」と同じ値です。同じブラウザなら自動で引き継がれます。</p>
+  <label>Web アプリ URL</label><input id="sUrl" placeholder="https://script.google.com/macros/s/.../exec">
+  <label style="margin-top:8px;display:block">合言葉</label><input id="sKey">
+  <div class="btns"><button id="sOff">共有を解除</button><button data-close>閉じる</button><button class="primary" id="sConn">接続</button></div>
+</div></div>
+<div class="modal" id="mConfirm"><div class="box" style="max-width:400px"><p id="cMsg"></p><div class="btns"><button id="cNo">キャンセル</button><button class="primary" id="cYes">OK</button></div></div></div>
+<div id="viewer"><img id="vImg" alt=""></div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* ========== utils（現場ビュー index.html と同じ仕様） ========== */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-5);
+const pad = n => String(n).padStart(2, '0');
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
+const hm = ts => { const d = new Date(ts); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const hasGeo = s => s.lat !== '' && s.lng !== '' && s.lat !== null && s.lng !== null && Number.isFinite(+s.lat) && Number.isFinite(+s.lng);
+let toastT; function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2400); }
+function confirmBox(msg) { return new Promise(res => { $('#cMsg').textContent = msg; $('#mConfirm').classList.add('show'); const d = v => { $('#mConfirm').classList.remove('show'); res(v); }; $('#cYes').onclick = () => d(true); $('#cNo').onclick = () => d(false); }); }
+document.querySelectorAll('.modal [data-close]').forEach(b => b.onclick = () => b.closest('.modal').classList.remove('show'));
+
+const KINDS = { '': '', in: 'IN', loc: '現場入り', shoot: '撮影', move: '移動', break: '休憩', end: '終了', other: 'その他' };
+function normStop(s) {
+  const n = v => (v === undefined || v === null) ? '' : v;
+  const num = v => (v === '' || v === null || v === undefined || !Number.isFinite(+v)) ? '' : +v;
+  return { id: s.id || uid(), time: n(s.time), dur: n(s.dur), kind: n(s.kind), block: n(s.block), title: n(s.title), cuts: n(s.cuts), costume: n(s.costume),
+    note: n(s.note), place: n(s.place), lat: num(s.lat), lng: num(s.lng), memo: n(s.memo), images: Array.isArray(s.images) ? s.images : [], logs: Array.isArray(s.logs) ? s.logs : [],
+    done: !!s.done, doneAt: s.doneAt || null, doneBy: n(s.doneBy) };
+}
+function normProject(p) {
+  return { id: p.id || uid(), title: p.title || '無題', date: p.date || todayStr(), tel: p.tel || '', station: p.station || '', notes: p.notes || '',
+    updatedAt: p.updatedAt || Date.now(), stops: (p.stops || []).map(normStop), ...('pdf' in p ? { pdf: p.pdf } : {}) };
+}
+function parseCoords(t) {
+  t = String(t || '');
+  const pats = [/@(-?\d+\.\d+),(-?\d+\.\d+)/, /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, /[?&](?:q|ll|query|destination|daddr)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i, /^\s*(-?\d{1,2}\.\d+)\s*[,、 ]\s*(-?\d{2,3}\.\d+)\s*$/];
+  for (const p of pats) { const m = p.exec(t); if (m) return { lat: +m[1], lng: +m[2] }; }
+  return null;
+}
+
+/* ========== storage / images / sync（index.html と共通の保存形式） ========== */
+const idb = (() => {
+  let p; const open = () => p || (p = new Promise((res, rej) => { const r = indexedDB.open('locomap', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }));
+  const get = async k => { const db = await open(); return new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); };
+  const set = async (k, v) => { const db = await open(); return new Promise((res, rej) => { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); };
+  return { get, set };
+})();
+let cfg = { url: '', key: '', me: '', tiles: 'gsi', nav: 'google', projectId: '', recent: [] };
+try { Object.assign(cfg, JSON.parse(localStorage.getItem('locomap.cfg') || '{}')); } catch (e) {}
+const saveCfg = () => { try { localStorage.setItem('locomap.cfg', JSON.stringify(cfg)); } catch (e) {} };
+
+const imgCache = new Map();
+async function putImage(dataURL) { const id = 'im' + uid(); await idb.set('img:' + id, dataURL); imgCache.set(id, dataURL); return id; }
+async function getImage(id) {
+  if (imgCache.has(id)) return imgCache.get(id);
+  let d = await idb.get('img:' + id);
+  if (!d && sync.on()) { try { const j = await sync.get({ action: 'img', id }); d = j.data; if (d) { await idb.set('img:' + id, d); await markUploaded(id); } } catch (e) {} }
+  if (d) imgCache.set(id, d); return d || null;
+}
+function blobToDataURL(blob, max = 1800, q = 0.84) {
+  return new Promise((res, rej) => { const u = URL.createObjectURL(blob); const im = new Image();
+    im.onload = () => { const k = Math.min(1, max / Math.max(im.naturalWidth, im.naturalHeight)); const c = document.createElement('canvas'); c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u); res(c.toDataURL('image/jpeg', q)); };
+    im.onerror = rej; im.src = u; });
+}
+async function hydrate(root) { for (const el of root.querySelectorAll('img[data-img]')) { const d = await getImage(el.dataset.img); if (d) el.src = d; } }
+
+const sync = {
+  on: () => !!cfg.url,
+  async get(params) { const u = new URL(cfg.url); Object.entries({ ...params, key: cfg.key || '' }).forEach(([k, v]) => u.searchParams.set(k, v)); const r = await fetch(u.toString()); const j = await r.json(); if (j.error) throw new Error(j.error); return j; },
+  async post(body) { const r = await fetch(cfg.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, key: cfg.key || '' }) }); const j = await r.json(); if (j.error) throw new Error(j.error); return j; }
+};
+async function uploadedSet() { return new Set(await idb.get('uploaded') || []); }
+async function markUploaded(id) { const s = await uploadedSet(); s.add(id); await idb.set('uploaded', [...s]); }
+function setSync(state, text) { $('#syncDot').className = state || ''; $('#syncText').textContent = text || ''; }
+
+/* ========== state ========== */
+let P = null, sel = -1, dirty = false, editSeq = 0, saveT = null, saving = false;
+const COLS = [
+  { k: 'time', h: '時刻', w: 64 },
+  { k: 'dur', h: '分', w: 46, ph: '' },
+  { k: 'kind', h: '種別', w: 82, type: 'kind' },
+  { k: 'block', h: '枠', w: 84 },
+  { k: 'title', h: '内容', w: 240, type: 'area' },
+  { k: 'cuts', h: 'カット', w: 120 },
+  { k: 'costume', h: '衣装', w: 70 },
+  { k: 'note', h: '備考', w: 150, type: 'area' },
+  { k: 'place', h: '場所・住所', w: 190, type: 'area' },
+  { k: 'geo', h: '座標', w: 150, type: 'geo' },
+  { k: 'img', h: '画像', w: 120, type: 'img' },
+];
+
+async function saveLocal() {
+  await idb.set('project:' + P.id, P);
+  cfg.projectId = P.id;
+  cfg.recent = [{ id: P.id, title: P.title, date: P.date }, ...(cfg.recent || []).filter(r => r.id !== P.id)].slice(0, 20);
+  saveCfg(); renderProjSel();
+}
+function changed() { dirty = true; editSeq++; setSync('busy', '編集中…'); clearTimeout(saveT); saveT = setTimeout(save, 1200); }
+async function save() {
+  if (saving) { clearTimeout(saveT); saveT = setTimeout(save, 600); return; }
+  saving = true; const seq = editSeq;
+  P.updatedAt = Date.now();
+  try {
+    await saveLocal();
+    if (sync.on()) {
+      setSync('busy', '送信中…');
+      const up = await uploadedSet();
+      for (const s of P.stops) for (const id of s.images) {
+        if (up.has(id)) continue; const d = await idb.get('img:' + id); if (!d) continue;
+        await sync.post({ action: 'img_put', id, data: d }); await markUploaded(id);
+      }
+      const j = await sync.post({ action: 'save', project: P });
+      if (j.project) mergeDone(j.project);
+      if (j.project && seq === editSeq) { P.updatedAt = j.project.updatedAt; await idb.set('project:' + P.id, P); }
+      setSync('ok', '共有済み ' + hm(Date.now()));
+    } else setSync('ok', '保存済み（この端末）' + hm(Date.now()));
+    if (seq === editSeq) dirty = false;
+  } catch (e) { setSync('err', '同期エラー：' + e.message); }
+  saving = false;
+}
+function mergeDone(remote) {
+  if ('pdf' in remote && (remote.pdf?.id || null) !== (P.pdf?.id || null) && !dirty) { P.pdf = remote.pdf; renderPdfMeta(); }
+  const m = new Map(remote.stops.map(s => [s.id, s])); let ch = false;
+  P.stops.forEach((s, i) => { const r = m.get(s.id); if (r && JSON.stringify(r.logs || []) !== JSON.stringify(s.logs || [])) { s.logs = r.logs || []; ch = true; } if (r && (r.done !== s.done || r.doneAt !== s.doneAt)) { s.done = r.done; s.doneAt = r.doneAt; s.doneBy = r.doneBy; ch = true; const tr = $('#tbody').children[i]; if (tr) tr.classList.toggle('done', !!s.done); } });
+  if (ch) drawMarkers();
+}
+async function pull() {
+  if (!sync.on() || !P || saving) return;
+  try {
+    const j = await sync.get({ action: 'get', project: P.id });
+    if (!j.project) return;
+    const editing = document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && document.activeElement.closest('#tbody,#detail,.meta');
+    if ((j.project.updatedAt || 0) > (P.updatedAt || 0) && !dirty && !editing) {
+      P = normProject(j.project); await idb.set('project:' + P.id, P); renderAll(); setSync('ok', '他の端末の変更を反映 ' + hm(Date.now()));
+    } else mergeDone(j.project);
+  } catch (e) { setSync('err', '同期エラー：' + e.message); }
+}
+
+/* ========== header / meta ========== */
+function renderProjSel() {
+  const s = $('#projSel'); const list = cfg.recent || [];
+  s.innerHTML = list.map(r => `<option value="${esc(r.id)}" ${P && r.id === P.id ? 'selected' : ''}>${esc(r.date)}　${esc(r.title)}</option>`).join('');
+}
+$('#projSel').onchange = async e => { await flush(); const p = await idb.get('project:' + e.target.value); if (p) { P = normProject(p); sel = -1; renderAll(); fitAll(); pull(); } };
+$('#bNew').onclick = async () => { await flush(); P = normProject({ title: '新規香盤表', stops: [] }); sel = -1; await saveLocal(); renderAll(); changed(); $('#mTitle').focus(); };
+function renderPdfMeta() {
+  $('#mPdfName').textContent = P.pdf ? `${P.pdf.name}（${(P.pdf.size / 1048576).toFixed(1)}MB）` : '未登録';
+  $('#mPdfBtn').firstChild.textContent = P.pdf ? '差し替え' : '登録'; $('#mPdfDel').hidden = !P.pdf;
+}
+const CHUNK = 3 * 1024 * 1024;
+function bufToB64(buf) { const b = new Uint8Array(buf); let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); }
+$('#mPdf').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  if (f.type && f.type !== 'application/pdf') return toast('PDFを選んでください');
+  try {
+    const buf = await f.arrayBuffer(); const id = 'pdf' + uid();
+    await idb.set('pdfb:' + id, buf);
+    if (sync.on()) {
+      const b64 = bufToB64(buf), total = Math.max(1, Math.ceil(b64.length / CHUNK));
+      for (let i = 0; i < total; i++) { setSync('busy', `PDF送信中 ${i + 1}/${total}`); await sync.post({ action: 'blob_put', id, part: i, total, name: f.name, size: buf.byteLength, data: b64.slice(i * CHUNK, (i + 1) * CHUNK) }); }
+    } else toast('共有設定がないため、PDFはこの端末にだけ保存されます');
+    P.pdf = { id, name: f.name, size: buf.byteLength }; renderPdfMeta(); changed(); toast('香盤表PDFを登録しました');
+  } catch (err) { setSync('err', 'PDFを送信できません：' + err.message); }
+};
+$('#mPdfDel').onclick = async () => { if (!(await confirmBox('香盤表PDFの登録を外しますか？'))) return; P.pdf = null; renderPdfMeta(); changed(); };
+function renderMeta() {
+  renderPdfMeta();
+  $('#mTitle').value = P.title; $('#mDate').value = P.date; $('#mTel').value = P.tel; $('#mStation').value = P.station; $('#mNotes').value = P.notes;
+  document.title = `${P.title}｜香盤表エディタ`;
+}
+[['mTitle', 'title'], ['mDate', 'date'], ['mTel', 'tel'], ['mStation', 'station'], ['mNotes', 'notes']].forEach(([id, k]) => $('#' + id).addEventListener('input', e => { P[k] = e.target.value; changed(); }));
+async function flush() { if (dirty) { clearTimeout(saveT); await save(); } }
+
+/* ========== grid ========== */
+$('#thead').innerHTML = '<th>#</th>' + COLS.map(c => `<th style="min-width:${c.w}px">${c.h}</th>`).join('');
+function cellHTML(c, s) {
+  if (c.type === 'kind') return `<select data-k="kind">${Object.entries(KINDS).map(([v, l]) => `<option value="${v}" ${s.kind === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  if (c.type === 'area') return `<textarea data-k="${c.k}" rows="1">${esc(s[c.k])}</textarea>`;
+  if (c.type === 'geo') return `<span class="dot" style="background:${hasGeo(s) ? 'var(--ok)' : '#d5d8de'}"></span><input data-k="geo" value="${hasGeo(s) ? `${(+s.lat).toFixed(6)}, ${(+s.lng).toFixed(6)}` : ''}" placeholder="緯度, 経度 / URL">`;
+  if (c.type === 'img') return `<div class="th">${s.images.slice(0, 2).map(id => `<img data-img="${esc(id)}" alt="">`).join('')}<span>${s.images.length ? s.images.length + '枚' : '＋'}</span></div>`;
+  return `<input data-k="${c.k}" value="${esc(s[c.k])}" placeholder="${esc(c.ph || '')}">`;
+}
+function renderGrid() {
+  const tb = $('#tbody');
+  if (!P.stops.length) { tb.innerHTML = `<tr><td colspan="${COLS.length + 1}" class="empty">行がありません。「＋ 行を追加」か、JSON／CSVを読み込んでください。</td></tr>`; return; }
+  tb.innerHTML = P.stops.map((s, i) => `<tr data-i="${i}" class="${i === sel ? 'sel' : ''} ${s.done ? 'done' : ''} ${s.time && i > 0 ? 'blockStart' : ''}">
+    <td class="rn">${i + 1}</td>${COLS.map(c => `<td class="${c.type === 'img' ? 'img' : c.type === 'geo' ? 'geo' : ''}">${cellHTML(c, s)}</td>`).join('')}</tr>`).join('');
+  tb.querySelectorAll('textarea').forEach(autoH);
+  hydrate(tb);
+}
+function autoH(t) { t.style.height = 'auto'; t.style.height = Math.max(30, t.scrollHeight) + 'px'; }
+function rowIndex(el) { const tr = el.closest('tr[data-i]'); return tr ? +tr.dataset.i : -1; }
+$('#tbody').addEventListener('input', e => {
+  const i = rowIndex(e.target), k = e.target.dataset.k; if (i < 0 || !k) return;
+  const s = P.stops[i];
+  if (e.target.tagName === 'TEXTAREA') autoH(e.target);
+  if (k === 'geo') return; // change で確定
+  s[k] = e.target.value;
+  if (k === 'time') e.target.closest('tr').classList.toggle('blockStart', !!s.time && i > 0);
+  if (k === 'title' || k === 'cuts') drawMarkers();
+  if (i === sel && ['title', 'place', 'cuts'].includes(k)) renderDetailHead();
+  changed();
+});
+$('#tbody').addEventListener('change', e => {
+  const i = rowIndex(e.target), k = e.target.dataset.k; if (i < 0) return;
+  const s = P.stops[i];
+  if (k === 'kind') { s.kind = e.target.value; changed(); }
+  if (k === 'geo') {
+    const v = e.target.value.trim();
+    if (!v) { s.lat = s.lng = ''; }
+    else { const r = parseCoords(v); if (!r) { toast('座標を読み取れません（例：35.6003, 140.0979 または GoogleマップのURL）'); return; } s.lat = +r.lat.toFixed(6); s.lng = +r.lng.toFixed(6); }
+    refreshRow(i); drawMarkers(); if (hasGeo(s)) map.panTo([s.lat, s.lng]); changed();
+  }
+  if (k === 'time' && s.time && !/^\d{1,2}[:：]\d{2}$/.test(s.time.trim())) toast('時刻は「8:30」の形式で入力してください');
+  if (k === 'time' && s.time) { const m = /^(\d{1,2})[:：](\d{2})$/.exec(s.time.trim()); if (m) { s.time = `${pad(+m[1])}:${m[2]}`; e.target.value = s.time; changed(); } }
+});
+$('#tbody').addEventListener('focusin', e => { const i = rowIndex(e.target); if (i >= 0 && i !== sel) select(i, false); });
+$('#tbody').addEventListener('click', e => {
+  const i = rowIndex(e.target); if (i < 0) return;
+  if (e.target.closest('td.rn') || e.target.closest('td.img')) { select(i, true); if (e.target.closest('td.img')) $('#detail').scrollTop = 0; }
+});
+$('#tbody').addEventListener('keydown', e => {
+  const i = rowIndex(e.target); if (i < 0) return;
+  const k = e.target.dataset.k;
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addRow(i + 1, k); return; }
+  if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); moveRow(i, e.key === 'ArrowUp' ? -1 : 1, k); return; }
+  if (e.key === 'Enter' && !e.shiftKey && e.target.tagName !== 'SELECT') { e.preventDefault(); if (k === 'geo') e.target.dispatchEvent(new Event('change', { bubbles: true })); focusCell(i + 1, k); return; }
+  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && e.target.tagName === 'INPUT') { e.preventDefault(); focusCell(i + (e.key === 'ArrowDown' ? 1 : -1), k); }
+});
+function focusCell(i, k) { const tr = $('#tbody').children[i]; if (!tr) return; const el = tr.querySelector(`[data-k="${k}"]`); if (el) { el.focus(); el.select?.(); } }
+function refreshRow(i) { const tr = $('#tbody').children[i]; if (!tr) return; const s = P.stops[i];
+  tr.querySelector('td.geo').innerHTML = cellHTML(COLS.find(c => c.k === 'geo'), s);
+  const ti = tr.querySelector('td.img'); ti.innerHTML = cellHTML(COLS.find(c => c.k === 'img'), s); hydrate(ti); }
+function select(i, focus) {
+  sel = i;
+  [...$('#tbody').children].forEach((tr, j) => tr.classList.toggle('sel', j === i));
+  renderDetail(); drawMarkers();
+  const s = P.stops[i]; if (s && hasGeo(s)) map.panTo([s.lat, s.lng]);
+  if (focus) { const tr = $('#tbody').children[i]; tr?.scrollIntoView({ block: 'nearest' }); }
+}
+function addRow(at, focusKey = 'title') {
+  const prev = P.stops[at - 1];
+  const s = normStop({ block: prev?.block || '', kind: prev?.kind || '', costume: prev?.costume || '', place: prev?.place || '' });
+  P.stops.splice(at, 0, s); sel = at; renderGrid(); renderDetail(); drawMarkers(); changed(); focusCell(at, focusKey);
+}
+function moveRow(i, d, focusKey) {
+  const j = i + d; if (j < 0 || j >= P.stops.length) return;
+  [P.stops[i], P.stops[j]] = [P.stops[j], P.stops[i]]; sel = j; renderGrid(); drawMarkers(); changed(); if (focusKey) focusCell(j, focusKey);
+}
+$('#tAdd').onclick = () => addRow(sel >= 0 ? sel + 1 : P.stops.length);
+$('#tDup').onclick = () => { if (sel < 0) return toast('行を選択してください'); const c = normStop({ ...JSON.parse(JSON.stringify(P.stops[sel])), id: undefined, done: false, doneAt: null, doneBy: '' }); P.stops.splice(sel + 1, 0, c); sel++; renderGrid(); renderDetail(); drawMarkers(); changed(); };
+$('#tUp').onclick = () => sel >= 0 && moveRow(sel, -1);
+$('#tDown').onclick = () => sel >= 0 && moveRow(sel, 1);
+$('#tDel').onclick = async () => {
+  if (sel < 0) return toast('行を選択してください');
+  const s = P.stops[sel]; if (!(await confirmBox(`${sel + 1}行目「${s.title || '（無題）'}」を削除しますか？`))) return;
+  P.stops.splice(sel, 1); sel = Math.min(sel, P.stops.length - 1); renderGrid(); renderDetail(); drawMarkers(); changed();
+};
+
+/* ========== map ========== */
+const TILES = {
+  liberty: ['https://tiles.openfreemap.org/styles/liberty', 20, 'vec'], positron: ['https://tiles.openfreemap.org/styles/positron', 20, 'vec'], bright: ['https://tiles.openfreemap.org/styles/bright', 20, 'vec'],
+  gsi: ['https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', 18], pale: ['https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', 18],
+  photo: ['https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', 18], osm: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png', 19] };
+const GSI_ATTR = '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>';
+const map = L.map('map', { zoomControl: true }).setView([35.68, 139.76], 12);
+const VEC_ATTR = '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/" target="_blank">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>';
+let tile; function setTiles(k) {
+  if (tile) map.removeLayer(tile); if (!TILES[k]) k = 'photo';
+  if (TILES[k][2] === 'vec' && !(L.maplibreGL && window.maplibregl)) k = 'pale';
+  const t = TILES[k];
+  tile = t[2] === 'vec' ? L.maplibreGL({ style: t[0], maxZoom: t[1] }).addTo(map)
+    : L.tileLayer(t[0], { maxZoom: t[1], attribution: k === 'osm' ? '&copy; OpenStreetMap contributors' : GSI_ATTR }).addTo(map);
+  map.setMaxZoom(t[1]); $('#mTiles').value = k;
+  map.attributionControl.removeAttribution(VEC_ATTR); if (t[2] === 'vec') map.attributionControl.addAttribution(VEC_ATTR); }
+setTiles(cfg.edTiles || 'photo');
+$('#mTiles').onchange = e => { cfg.edTiles = e.target.value; saveCfg(); setTiles(e.target.value); };
+const mk = L.layerGroup().addTo(map); let route = null;
+let placeMode = true; $('#mPlace').onclick = () => { placeMode = !placeMode; $('#mPlace').classList.toggle('on', placeMode); };
+function drawMarkers() {
+  mk.clearLayers(); if (route) { map.removeLayer(route); route = null; }
+  const line = [];
+  P.stops.forEach((s, i) => {
+    if (!hasGeo(s)) return; line.push([s.lat, s.lng]);
+    const isSel = i === sel, sz = isSel ? 34 : 26;
+    const m = L.marker([s.lat, s.lng], { draggable: true, zIndexOffset: isSel ? 1000 : 0,
+      icon: L.divIcon({ className: '', html: `<div class="mk ${isSel ? 'sel' : ''} ${s.done ? 'done' : ''}"><span>${i + 1}</span></div>`, iconSize: [sz, sz], iconAnchor: [sz / 2, sz] }) });
+    m.bindTooltip(`${i + 1}. ${esc(s.time)} ${esc(s.title)}${s.cuts ? ' / ' + esc(s.cuts) : ''}`, { direction: 'top', offset: [0, -sz] });
+    m.on('click', () => select(i, true));
+    m.on('dragend', () => { const ll = m.getLatLng(); s.lat = +ll.lat.toFixed(6); s.lng = +ll.lng.toFixed(6); refreshRow(i); if (i === sel) renderDetail(); changed(); drawMarkers(); });
+    m.addTo(mk);
+  });
+  if (line.length > 1) route = L.polyline(line, { color: '#2f6fed', weight: 2, opacity: .5, dashArray: '4 6' }).addTo(map);
+}
+map.on('click', e => {
+  if (!placeMode || sel < 0) return;
+  const s = P.stops[sel]; s.lat = +e.latlng.lat.toFixed(6); s.lng = +e.latlng.lng.toFixed(6);
+  refreshRow(sel); renderDetail(); drawMarkers(); changed(); toast(`${sel + 1}行目の位置を設定しました`);
+});
+function fitAll() { map.invalidateSize(); const pts = P.stops.filter(hasGeo).map(s => [s.lat, s.lng]); if (pts.length === 1) map.setView(pts[0], 17); else if (pts.length) map.fitBounds(pts, { padding: [30, 30] }); }
+$('#mFit').onclick = fitAll;
+window.addEventListener('resize', () => map.invalidateSize());
+
+/* ========== detail panel ========== */
+function renderDetailHead() { const h = $('#dHead'); if (h && sel >= 0) { const s = P.stops[sel]; h.textContent = `${sel + 1}. ${s.title || '（無題）'}${s.cuts ? '　' + s.cuts : ''}`; } }
+function renderDetail() {
+  const d = $('#detail');
+  if (sel < 0 || !P.stops[sel]) { d.innerHTML = `<div class="sec"><h4>使い方</h4><div style="color:var(--sub);line-height:1.7">
+    ・左の表で行をクリックすると、ここに画像・メモ・位置の設定が表示されます。<br>
+    ・「クリックで配置」がオンのとき、地図をクリックすると選択中の行の位置が入ります。ピンはドラッグで微調整できます。<br>
+    ・航空写真（地理院 写真）でロケハン資料と見比べながら配置できます。<br>
+    ・時刻を空欄にした行は、直前の時刻の枠（例：SHOOT①）の中の撮影位置として扱われます。<br>
+    ・編集内容は自動保存され、共有設定があれば現場ビューに反映されます。</div></div>`; return; }
+  const s = P.stops[sel];
+  d.innerHTML = `
+    <div class="sec"><h4 id="dHead"></h4>
+      <label>画像（香盤表・絵コンテ・ロケハン写真・カット別マップ）</label>
+      <div class="imgs" id="dImgs">${s.images.map((id, k) => `<div class="it"><img data-img="${esc(id)}" alt=""><div class="ops">${k ? `<button data-mv="${k}" title="前へ">←</button>` : ''}<button data-rm="${k}" title="削除">×</button></div></div>`).join('')}</div>
+      <div class="drop" id="dDrop">ここに画像をドロップ ／ <kbd>Ctrl</kbd>+<kbd>V</kbd> で貼り付け ／ <label style="color:var(--todo);cursor:pointer;text-decoration:underline">ファイルを選択<input type="file" id="dFile" accept="image/*" multiple hidden></label></div>
+      <div style="color:var(--sub);font-size:11px;margin-top:4px">1枚目が一覧のサムネイルになります。PDFの一部はスクリーンショット（Win: <kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> ／ Mac: <kbd>⌘</kbd>+<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>4</kbd>）してそのまま貼り付けできます。</div>
+    </div>
+    <div class="sec"><h4>位置</h4>
+      <div class="row"><input id="dQ" placeholder="住所・施設名で検索" value="${esc(s.place)}"><button id="dSearch">検索</button></div>
+      <div class="results" id="dRes"></div>
+      <div style="color:var(--sub);font-size:11px;margin-top:6px">${hasGeo(s) ? `現在：${(+s.lat).toFixed(6)}, ${(+s.lng).toFixed(6)}　<a href="https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}" target="_blank">Googleマップで確認</a>` : '未設定（地図クリック／検索／表の座標欄にGoogleマップURLを貼り付け）'}</div>
+    </div>
+    <div class="sec"><h4>詳細メモ（現場ビューの詳細に表示）</h4><textarea id="dMemo">${esc(s.memo)}</textarea></div>
+    ${s.logs.length ? `<div class="sec"><h4>現場メモ（${s.logs.length}件・現場ビューで追加）</h4>${s.logs.slice().sort((a, b) => a.t - b.t).map(l => `<div style="padding:4px 0;border-top:1px solid var(--line)"><span style="color:var(--sub);font-size:11px">${hm(l.t)} ${esc(l.by)}</span><div style="white-space:pre-wrap">${esc(l.text)}</div></div>`).join('')}</div>` : ''}`;
+  renderDetailHead();
+  hydrate(d);
+  d.querySelectorAll('#dImgs img').forEach(im => im.onclick = () => { $('#vImg').src = im.src; $('#viewer').classList.add('show'); });
+  d.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { s.images.splice(+b.dataset.rm, 1); refreshRow(sel); renderDetail(); changed(); });
+  d.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => { const k = +b.dataset.mv; [s.images[k - 1], s.images[k]] = [s.images[k], s.images[k - 1]]; refreshRow(sel); renderDetail(); changed(); });
+  const drop = $('#dDrop');
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+  drop.ondragleave = () => drop.classList.remove('over');
+  drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); addImages([...e.dataTransfer.files]); };
+  $('#dFile').onchange = e => addImages([...e.target.files]);
+  $('#dMemo').oninput = e => { s.memo = e.target.value; changed(); };
+  $('#dSearch').onclick = async () => {
+    const q = $('#dQ').value.trim(); if (!q) return; const box = $('#dRes'); box.textContent = '検索中…';
+    const rs = await geocode(q);
+    box.innerHTML = rs.length ? rs.map((r, k) => `<button data-k="${k}">${esc(r.name)}<br><small style="color:var(--sub)">${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}</small></button>`).join('') : '<div style="color:var(--sub)">見つかりませんでした</div>';
+    box.querySelectorAll('button').forEach(b => b.onclick = () => { const r = rs[+b.dataset.k]; s.lat = +r.lat.toFixed(6); s.lng = +r.lng.toFixed(6); refreshRow(sel); renderDetail(); drawMarkers(); map.setView([s.lat, s.lng], 17); changed(); });
+  };
+  $('#dQ').onkeydown = e => { if (e.key === 'Enter') $('#dSearch').click(); };
+}
+async function addImages(files) {
+  if (sel < 0) return toast('先に行を選択してください');
+  const s = P.stops[sel]; let n = 0;
+  for (const f of files) { if (!f.type.startsWith('image/')) continue; try { s.images.push(await putImage(await blobToDataURL(f))); n++; } catch (e) {} }
+  if (n) { refreshRow(sel); renderDetail(); changed(); toast(`${n}枚追加しました`); }
+}
+document.addEventListener('paste', e => {
+  const files = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/'));
+  if (!files.length) return;
+  e.preventDefault(); addImages(files);
+});
+$('#viewer').onclick = () => $('#viewer').classList.remove('show');
+async function geocode(q) {
+  const out = [];
+  try { const r = await fetch('https://msearch.gsi.go.jp/address-search/AddressSearch?q=' + encodeURIComponent(q)); const j = await r.json();
+    (j || []).slice(0, 5).forEach(f => out.push({ name: f.properties.title, lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0] })); } catch (e) {}
+  try { const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&countrycodes=jp&accept-language=ja&limit=5&q=' + encodeURIComponent(q)); const j = await r.json();
+    (j || []).forEach(f => out.push({ name: f.display_name, lat: +f.lat, lng: +f.lon })); } catch (e) {}
+  return out;
+}
+
+/* ========== import / export ========== */
+const CSV_COLS = [['id', 'id'], ['time', '時刻'], ['dur', '分'], ['kind', '種別'], ['block', '枠'], ['title', '内容'], ['cuts', 'カット'], ['costume', '衣装'], ['note', '備考'], ['place', '場所'], ['lat', '緯度'], ['lng', '経度'], ['memo', 'メモ']];
+const kindLabel = k => KINDS[k] ?? k, kindKey = l => (Object.entries(KINDS).find(([k, v]) => v === l || k === l) || ['other'])[0];
+function toCSV() {
+  const q = v => { v = String(v ?? ''); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const head = [...CSV_COLS.map(c => c[1]), '完了時刻', '現場メモ'].join(',');
+  const rows = P.stops.map(s => [...CSV_COLS.map(([k]) => q(k === 'kind' ? kindLabel(s.kind) : s[k])), q(s.done && s.doneAt ? hm(s.doneAt) : ''),
+    q((s.logs || []).slice().sort((a, b) => a.t - b.t).map(l => `${hm(l.t)}${l.by ? ' ' + l.by : ''}: ${l.text}`).join('\n'))].join(','));
+  return '﻿' + [head, ...rows].join('\r\n');
+}
+function parseCSV(text) {
+  text = text.replace(/^﻿/, ''); const rows = []; let row = [], f = '', q = false;
+  for (let i = 0; i < text.length; i++) { const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true; else if (c === ',') { row.push(f); f = ''; } else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; } else f += c; }
+  if (f !== '' || row.length) { row.push(f); rows.push(row); }
+  return rows.filter(r => r.some(v => v.trim() !== ''));
+}
+function download(name, text, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); }
+const fname = ext => `${P.date || 'kouban'}_${(P.title || '香盤表').replace(/[\\/:*?"<>|]/g, '_')}.${ext}`;
+$('#bExpCsv').onclick = () => download(fname('csv'), toCSV(), 'text/csv');
+$('#bExpJson').onclick = async () => {
+  const withImg = await confirmBox('画像も含めて書き出しますか？（OK：画像込み／キャンセル：文字情報のみ）');
+  const out = { title: P.title, date: P.date, tel: P.tel, station: P.station, notes: P.notes,
+    stops: await Promise.all(P.stops.map(async s => { const { done, doneAt, doneBy, ...rest } = s; return { ...rest, images: withImg ? (await Promise.all(s.images.map(getImage))).filter(Boolean) : [] }; })) };
+  download(fname('json'), JSON.stringify(out, null, 1), 'application/json');
+};
+$('#fImport').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const text = await f.text();
+    if (/\.csv$/i.test(f.name) || f.type === 'text/csv') {
+      const rows = parseCSV(text); const head = rows.shift().map(h => h.trim());
+      const idx = CSV_COLS.map(([k, l]) => [k, head.findIndex(h => h === l || h === k)]);
+      const incoming = rows.map(r => { const o = {}; idx.forEach(([k, j]) => { if (j >= 0) o[k] = (r[j] ?? '').trim(); }); if (o.kind !== undefined) o.kind = o.kind ? kindKey(o.kind) : ''; return o; });
+      const mode = P.stops.length ? await confirmBox(`CSVの${incoming.length}行を現在の香盤表に反映します。\nOK：idが一致する行は上書きし、無い行は追加／キャンセル：中止`) : true;
+      if (!mode) return;
+      const byId = new Map(P.stops.map(s => [s.id, s])); const next = [];
+      incoming.forEach(o => { const ex = o.id && byId.get(o.id); next.push(ex ? normStop({ ...ex, ...o, images: ex.images, done: ex.done, doneAt: ex.doneAt, doneBy: ex.doneBy }) : normStop({ ...o, id: o.id || undefined })); if (ex) byId.delete(o.id); });
+      if (byId.size && await confirmBox(`CSVに無い${byId.size}行があります。削除しますか？（キャンセルで末尾に残す）`) === false) next.push(...byId.values());
+      P.stops = next; sel = -1; renderAll(); fitAll(); changed(); toast('CSVを反映しました');
+    } else {
+      const j = JSON.parse(text); if (!Array.isArray(j.stops)) throw new Error('stops がありません');
+      if (!(await confirmBox(`「${j.title || '無題'}」(${j.stops.length}行) を新しい香盤表として読み込みますか？`))) return;
+      await flush();
+      const seen = new Map(); const once = d => { if (!seen.has(d)) seen.set(d, putImage(d)); return seen.get(d); };
+      const stops = await Promise.all(j.stops.map(async s => ({ ...normStop({ ...s, id: undefined, done: false }), images: await Promise.all((s.images || []).filter(d => typeof d === 'string' && d.startsWith('data:image/')).map(once)) })));
+      P = normProject({ ...j, id: undefined, updatedAt: Date.now(), stops }); sel = -1;
+      await saveLocal(); renderAll(); fitAll(); changed(); toast('読み込みました');
+    }
+  } catch (err) { toast('読み込めません：' + err.message); }
+};
+
+/* ========== sync settings ========== */
+$('#bSync').onclick = () => { $('#sUrl').value = cfg.url; $('#sKey').value = cfg.key; $('#mSync').classList.add('show'); };
+$('#sConn').onclick = async () => {
+  cfg.url = $('#sUrl').value.trim(); cfg.key = $('#sKey').value.trim(); saveCfg(); $('#mSync').classList.remove('show');
+  if (!cfg.url) return; setSync('busy', '接続中…');
+  try { const j = await sync.get({ action: 'get', project: P.id }); if (j.project && (j.project.updatedAt || 0) > (P.updatedAt || 0)) { P = normProject(j.project); renderAll(); } changed(); toast('接続しました'); }
+  catch (e) { setSync('err', '接続できません：' + e.message); }
+};
+$('#sOff').onclick = () => { cfg.url = ''; saveCfg(); $('#mSync').classList.remove('show'); setSync('', '共有なし'); };
+
+/* ========== boot ========== */
+function renderAll() { renderMeta(); renderGrid(); renderDetail(); drawMarkers(); renderProjSel(); }
+window.addEventListener('beforeunload', e => { if (dirty) { save(); e.preventDefault(); e.returnValue = ''; } });
+(async () => {
+  let p = cfg.projectId ? await idb.get('project:' + cfg.projectId) : null;
+  P = normProject(p || { title: '新規香盤表', stops: [] });
+  if (!p) await saveLocal();
+  renderAll(); setTimeout(fitAll, 50);
+  setSync(sync.on() ? 'ok' : '', sync.on() ? '共有中' : '共有なし（この端末に保存）');
+  if (sync.on()) { pull(); setInterval(() => { if (document.visibilityState === 'visible') pull(); }, 15000); }
+})();
+</script>
+</body>
+</html>

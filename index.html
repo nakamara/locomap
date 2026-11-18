@@ -93,7 +93,9 @@ header button{padding:6px 10px;min-height:36px}
 .stop .bd{flex:1;min-width:0}
 .stop .bd b{display:block}
 .stop .num{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:10px;font-size:11px;color:#fff;background:var(--todo);margin-right:4px;padding:0 5px;vertical-align:1px}
-.stop.active{border-color:var(--accent);box-shadow:0 0 0 2px rgba(229,72,45,.15)} .stop.active .num{background:var(--accent)}
+.stop.active{border-color:var(--accent);background:#fff3ef;box-shadow:0 0 0 2px rgba(229,72,45,.28)}
+.stop .actLbl{display:inline-block;font-size:11px;font-weight:700;color:#fff;background:var(--accent);border-radius:4px;padding:1px 5px;margin-right:4px;vertical-align:1px}
+.stop .pill{margin-top:3px} .stop.active .num{background:var(--accent)}
 .stop.next .num{background:var(--next)}
 .stop.done{opacity:.6} .stop.done .num{background:var(--done)}
 .stop img.th{flex:none;width:56px;height:42px;object-fit:cover;border-radius:6px;background:#eee}
@@ -589,6 +591,8 @@ function renderStatus(st = computeState()) {
   const done = P.stops.filter(s => s.done).length;
   $('#progress').textContent = `進捗 ${done}/${P.stops.length}`;
   const warn = P.date && P.date !== todayStr() ? `<div class="dateWarn">撮影日（${esc(P.date)}）は本日ではありません。時刻判定は本日の時刻で計算しています。</div>` : '';
+  if (!cfg.showCards) { el.innerHTML = warn; el.style.paddingBottom = warn ? '' : '0'; return; }
+  el.style.paddingBottom = '';
   if (!P.stops.length) { el.innerHTML = warn + `<div class="card empty">地点がありません。「編集」から追加するか、PDFを取り込んでください。</div>`; return; }
   if (!st.active) { el.innerHTML = warn + `<div class="card nowCard"><div class="lbl">完了</div><div class="big">全行程が完了しました</div></div>`; return; }
   const a = st.active, n = st.next, tm = timing(st);
@@ -635,6 +639,7 @@ function renderStatus(st = computeState()) {
   $('#sDetail').onclick = () => showDetail(a);
   const nd = $('#sNextDetail'); if (nd) nd.onclick = () => showDetail(n);
 }
+let lastActiveId = null;
 function renderList(st) {
   const ul = $('#list');
   $('#editTools').innerHTML = editMode ? `<button id="tAdd">＋地点</button> <button id="tPdf">PDF取込</button>` : '';
@@ -644,12 +649,13 @@ function renderList(st) {
     return `<li class="stop ${cls}" data-id="${s.id}">
       ${editMode ? '' : `<button class="chk" data-act="chk" aria-label="完了切替">✓</button>`}
       <div class="tm">${s.time ? esc(s.time) : '<span class="subl">↳</span>'}${s.done && s.doneAt ? `<small>済 ${hm(s.doneAt)}</small>` : ''}</div>
-      <div class="bd" data-act="open"><b class="ellip"><span class="num">${i + 1}</span>${esc(s.title) || '(無題)'}</b>
-        <div class="subl ellip">${s.cuts ? `<b>${esc(s.cuts)}</b> ` : ''}${s.costume ? esc(s.costume) + ' ・' : ''}${esc(s.place)}${hasGeo(s) ? '' : ' <span class="nogeo">位置未設定</span>'}${s.done && s.doneBy ? ' ・' + esc(s.doneBy) : ''}${s.logs?.length ? ` ・メモ${s.logs.length}` : ''}</div></div>
+      <div class="bd" data-act="open"><b class="ellip">${s === st.active ? '<span class="actLbl">いま</span>' : ''}<span class="num">${i + 1}</span>${esc(s.title) || '(無題)'}</b>
+        <div class="subl ellip">${s.cuts ? `<b>${esc(s.cuts)}</b> ` : ''}${s.costume ? esc(s.costume) + ' ・' : ''}${esc(s.place)}${hasGeo(s) ? '' : ' <span class="nogeo">位置未設定</span>'}${s.done && s.doneBy ? ' ・' + esc(s.doneBy) : ''}${s.logs?.length ? ` ・メモ${s.logs.length}` : ''}</div>${s === st.active ? (() => { const tm = timing(st); return tm ? `<span class="pill ${tm.cls}" id="actPill">${esc(tm.text)}</span>` : ''; })() : ''}</div>
       ${s.images && s.images.length ? `<img class="th" data-img="${esc(s.images[0])}" alt="">` : ''}
       ${editMode ? `<div class="ed"><button data-act="up">↑</button><button data-act="down">↓</button></div><button data-act="edit">編集</button>` : ''}
     </li>`;
   }).join('') || `<li class="empty">地点がありません</li>`;
+  if (st.active && st.active.id !== lastActiveId) { lastActiveId = st.active.id; const li = ul.querySelector(`[data-id="${st.active.id}"]`); if (li) setTimeout(() => li.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 50); }
   hydrateImgs(ul);
 }
 $('#list').addEventListener('click', async e => {
@@ -670,7 +676,7 @@ $('#btnEdit').onclick = () => { editMode = !editMode; $('#btnEdit').textContent 
 
 /* clock */
 function tick() { const d = new Date(); $('#clock').textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
-tick(); setInterval(() => { tick(); if (P) renderStatus(); }, 15000);
+tick(); setInterval(() => { tick(); if (!P) return; renderStatus(); const st = computeState(), tm = st.active && timing(st), pl = $('#actPill'); if (pl && tm) { pl.textContent = tm.text; pl.className = 'pill ' + tm.cls; } }, 15000);
 
 /* ========== detail ========== */
 let detailId = null;
@@ -1112,6 +1118,7 @@ function openSettings() {
     <div class="section"><h4>PCで編集</h4><div class="hint">表形式で香盤表を編集できます（PCのブラウザ推奨）。</div><div class="btnRow"><a class="btn" href="editor.html">編集画面を開く</a></div></div>
     <div class="section"><h4>表示</h4>
       <label>地図</label><select id="sTiles">${Object.entries(TILES).map(([k, t]) => `<option value="${k}" ${cfg.tiles === k ? 'selected' : ''}>${t.name}</option>`).join('')}</select>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)"><input type="checkbox" id="sCards" style="width:20px;height:20px" ${cfg.showCards ? 'checked' : ''}>「いま」「次」のカードを表示する</label>
       <label>ナビに使うアプリ</label><select id="sNav"><option value="google" ${cfg.nav !== 'apple' ? 'selected' : ''}>Google マップ</option><option value="apple" ${cfg.nav === 'apple' ? 'selected' : ''}>Apple マップ</option></select>
     </div>
     <div class="section"><h4>データ</h4>
@@ -1136,6 +1143,7 @@ function openSettings() {
   const cp = $('#sCopy'); if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText($('#sLink').value); toast('コピーしました'); } catch (e) { $('#sLink').select(); toast('選択した状態です。手動でコピーしてください'); } };
   $('#sTiles').onchange = e => { cfg.tiles = e.target.value; saveCfg(); setTiles(); };
   $('#sNav').onchange = e => { cfg.nav = e.target.value; saveCfg(); render(); };
+  $('#sCards').onchange = e => { cfg.showCards = e.target.checked; saveCfg(); render(); setTimeout(() => map.invalidateSize(), 50); };
   $('#sExport').onclick = () => {
     const blob = new Blob([JSON.stringify({ title: P.title, date: P.date, stops: P.stops.map(({ id, time, title, place, lat, lng, memo }) => ({ id, time, title, place, lat, lng, memo })) }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${P.date || 'project'}_${P.title || 'locomap'}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
